@@ -81,6 +81,7 @@ class KuzuDBStorage(BaseGraphStorage):
                     entity_id STRING,
                     entity_type STRING,
                     description STRING,
+                    keywords STRING,
                     source_id STRING,
                     PRIMARY KEY(entity_id)
                 )
@@ -92,6 +93,7 @@ class KuzuDBStorage(BaseGraphStorage):
                 f"""
                 CREATE REL TABLE IF NOT EXISTS DIRECTED(
                     FROM {workspace_label} TO {workspace_label},
+                    relationship STRING,
                     weight DOUBLE,
                     description STRING,
                     keywords STRING,
@@ -141,7 +143,7 @@ class KuzuDBStorage(BaseGraphStorage):
         workspace_label = self._get_workspace_label()
         try:
             query = f"""
-                MATCH (a:{workspace_label})-[r:DIRECTED]->(b:{workspace_label}) 
+                MATCH (a:{workspace_label})-[r:DIRECTED]-(b:{workspace_label}) 
                 WHERE a.entity_id = $source_id AND b.entity_id = $target_id 
                 RETURN r
             """
@@ -172,7 +174,8 @@ class KuzuDBStorage(BaseGraphStorage):
                     "entity_id": row[0],
                     "entity_type": row[1],
                     "description": row[2],
-                    "source_id": row[3],
+                    "keywords": row[3],
+                    "source_id": row[4],
                 }
                 return node_dict
             return None
@@ -208,7 +211,9 @@ class KuzuDBStorage(BaseGraphStorage):
 
             if result.has_next():
                 row = result.get_next()
-                return row[0] if row[0] is not None else 0
+                # Since we create bidirectional edges, divide by 2 to get the actual degree
+                degree = row[0] if row[0] is not None else 0
+                return degree // 2
             return 0
         except Exception as e:
             logger.error(f"Error getting node degree for {node_id}: {str(e)}")
@@ -250,7 +255,7 @@ class KuzuDBStorage(BaseGraphStorage):
         workspace_label = self._get_workspace_label()
         try:
             query = f"""
-                MATCH (a:{workspace_label})-[r:DIRECTED]->(b:{workspace_label})
+                MATCH (a:{workspace_label})-[r:DIRECTED]-(b:{workspace_label})
                 WHERE a.entity_id = $source_id AND b.entity_id = $target_id
                 RETURN r.*
             """
@@ -273,6 +278,7 @@ class KuzuDBStorage(BaseGraphStorage):
 
                 # Ensure required keys exist with defaults
                 required_keys = {
+                    "relationship": None,
                     "weight": 0.0,
                     "source_id": None,
                     "description": None,
@@ -303,6 +309,7 @@ class KuzuDBStorage(BaseGraphStorage):
                 edges_dict[(src_id, tgt_id)] = edge
             else:
                 edges_dict[(src_id, tgt_id)] = {
+                    "relationship": None,
                     "weight": 0.0,
                     "source_id": None,
                     "description": None,
@@ -315,7 +322,7 @@ class KuzuDBStorage(BaseGraphStorage):
         workspace_label = self._get_workspace_label()
         try:
             query = f"""
-                MATCH (n:{workspace_label})-[r:DIRECTED]-(connected:{workspace_label})
+                    MATCH (n:{workspace_label})-[r:DIRECTED]-(connected:{workspace_label})
                 WHERE n.entity_id = $entity_id
                 RETURN n.entity_id, connected.entity_id
             """
@@ -324,12 +331,19 @@ class KuzuDBStorage(BaseGraphStorage):
             )
 
             edges = []
+            seen_pairs = set()
             for result in result:
                 if not result.has_next():
                     continue
                 while result.has_next():
                     row = result.get_next()
-                    edges.append((row[0], row[1]))
+                    # Create a normalized edge pair to avoid duplicates
+                    node1, node2 = row[0], row[1]
+                    # Sort the pair to ensure consistent ordering
+                    edge_pair = tuple(sorted([node1, node2]))
+                    if edge_pair not in seen_pairs:
+                        edges.append((node1, node2))
+                        seen_pairs.add(edge_pair)
 
             return edges if edges else None
         except Exception as e:
@@ -350,6 +364,7 @@ class KuzuDBStorage(BaseGraphStorage):
         """Get all nodes that are associated with the given chunk_ids"""
         workspace_label = self._get_workspace_label()
         nodes = []
+        seen_nodes = set()  # Track seen entity_ids to avoid duplicates
 
         try:
             for chunk_id in chunk_ids:
@@ -379,7 +394,12 @@ class KuzuDBStorage(BaseGraphStorage):
                             clean_node_dict[clean_key] = value
 
                         clean_node_dict["id"] = clean_node_dict.get("entity_id")
-                        nodes.append(clean_node_dict)
+                        
+                        # Only add the node if we haven't seen it before
+                        entity_id = clean_node_dict.get("entity_id")
+                        if entity_id and entity_id not in seen_nodes:
+                            nodes.append(clean_node_dict)
+                            seen_nodes.add(entity_id)
         except Exception as e:
             logger.error(f"Error getting nodes by chunk ids: {str(e)}")
 
@@ -389,13 +409,14 @@ class KuzuDBStorage(BaseGraphStorage):
         """Get all edges that are associated with the given chunk_ids"""
         workspace_label = self._get_workspace_label()
         edges = []
+        seen_edges = set()  # Track seen edge pairs to avoid duplicates
 
         try:
             for chunk_id in chunk_ids:
                 query = f"""
-                    MATCH (a:{workspace_label})-[r:DIRECTED]-(b:{workspace_label})
-                    WHERE r.source_id CONTAINS $chunk_id
-                    RETURN a.entity_id, b.entity_id, r.*
+                            MATCH (a:{workspace_label})-[r:DIRECTED]-(b:{workspace_label})
+                            WHERE r.source_id CONTAINS $chunk_id
+                            RETURN a.entity_id, b.entity_id, r.*
                 """
                 result = self.get_all(
                     self.connection.execute(query, {"chunk_id": chunk_id})
@@ -421,9 +442,15 @@ class KuzuDBStorage(BaseGraphStorage):
                             )
                             clean_edge_dict[clean_key] = value
 
-                        clean_edge_dict["source"] = row[0]
-                        clean_edge_dict["target"] = row[1]
-                        edges.append(clean_edge_dict)
+                        source, target = row[0], row[1]
+                        clean_edge_dict["source"] = source
+                        clean_edge_dict["target"] = target
+                        
+                        # Create normalized edge pair to avoid bidirectional duplicates
+                        edge_pair = tuple(sorted([source, target]))
+                        if edge_pair not in seen_edges:
+                            edges.append(clean_edge_dict)
+                            seen_edges.add(edge_pair)
         except Exception as e:
             logger.error(f"Error getting edges by chunk ids: {str(e)}")
 
@@ -488,14 +515,25 @@ class KuzuDBStorage(BaseGraphStorage):
 
             set_clause = f"SET {', '.join(set_props)}" if set_props else ""
 
-            query = f"""
+            # Create bidirectional edges to simulate undirected behavior
+            # Edge 1: source -> target
+            query1 = f"""
                 MATCH (source:{workspace_label} {{entity_id: $source_id}})
                 MATCH (target:{workspace_label} {{entity_id: $target_id}})
                 MERGE (source)-[r:DIRECTED]->(target)
                 {set_clause}
             """
+            
+            # Edge 2: target -> source
+            query2 = f"""
+                MATCH (source:{workspace_label} {{entity_id: $source_id}})
+                MATCH (target:{workspace_label} {{entity_id: $target_id}})
+                MERGE (target)-[r:DIRECTED]->(source)
+                {set_clause}
+            """
 
-            self.connection.execute(query, params)
+            self.connection.execute(query1, params)
+            self.connection.execute(query2, params)
 
         except Exception as e:
             logger.error(f"Error during edge upsert: {str(e)}")
@@ -537,22 +575,29 @@ class KuzuDBStorage(BaseGraphStorage):
                             zip(column_names[:-1], row[:-1])
                         )  # Exclude degree
 
-                        if node_data["entity_id"] not in seen_nodes:
+                        # Clean up column names by removing prefixes
+                        clean_node_data = {}
+                        for key, value in node_data.items():
+                            clean_key = key.replace("n.", "") if key.startswith("n.") else key
+                            clean_node_data[clean_key] = value
+
+                        entity_id = clean_node_data.get("entity_id")
+                        if entity_id and entity_id not in seen_nodes:
                             result.nodes.append(
                                 KnowledgeGraphNode(
-                                    id=node_data["entity_id"],
-                                    labels=[node_data["entity_id"]],
-                                    properties=node_data,
+                                    id=entity_id,
+                                    labels=[entity_id],
+                                    properties=clean_node_data,
                                 )
                             )
-                            seen_nodes.add(node_data["entity_id"])
+                            seen_nodes.add(entity_id)
 
                 # Get edges between these nodes
                 if seen_nodes:
                     entity_ids = list(seen_nodes)
                     edges_query = f"""
                         MATCH (a:{workspace_label})-[r:DIRECTED]-(b:{workspace_label})
-                        WHERE a.entity_id IN $1 AND b.entity_id IN $1
+                        WHERE a.entity_id IN $entity_ids AND b.entity_id IN $entity_ids
                         RETURN a.entity_id, b.entity_id, r.*
                     """
 
@@ -569,14 +614,18 @@ class KuzuDBStorage(BaseGraphStorage):
                             column_names = edge_query_result.get_column_names()
                             edge_data = dict(zip(column_names[2:], row[2:]))
 
-                            edge_id = f"{row[0]}-{row[1]}"
+                            # Create normalized edge_id to avoid bidirectional duplicates
+                            source, target = row[0], row[1]
+                            edge_pair = tuple(sorted([source, target]))
+                            edge_id = f"{edge_pair[0]}-{edge_pair[1]}"
+                            
                             if edge_id not in seen_edges:
                                 result.edges.append(
                                     KnowledgeGraphEdge(
                                         id=edge_id,
-                                        type="DIRECTED",
-                                        source=row[0],
-                                        target=row[1],
+                                        type="UNDIRECTED",
+                                        source=edge_pair[0],
+                                        target=edge_pair[1],
                                         properties=edge_data,
                                     )
                                 )
@@ -639,7 +688,7 @@ class KuzuDBStorage(BaseGraphStorage):
                                     result.edges.append(
                                         KnowledgeGraphEdge(
                                             id=edge_id,
-                                            type="DIRECTED",
+                                            type="UNDIRECTED",
                                             source=source_id,
                                             target=target_id,
                                             properties=edge_data,
@@ -708,14 +757,26 @@ class KuzuDBStorage(BaseGraphStorage):
         workspace_label = self._get_workspace_label()
         for source, target in edges:
             try:
-                query = f"""
+                # Since we create bidirectional edges, we need to delete both directions
+                # Delete source -> target
+                query1 = f"""
                     MATCH (source:{workspace_label} {{entity_id: $source_id}})-[r:DIRECTED]->(target:{workspace_label} {{entity_id: $target_id}})
                     DELETE r
                 """
                 self.connection.execute(
-                    query, {"source_id": source, "target_id": target}
+                    query1, {"source_id": source, "target_id": target}
                 )
-                logger.debug(f"Deleted edge from '{source}' to '{target}'")
+                
+                # Delete target -> source
+                query2 = f"""
+                    MATCH (target:{workspace_label} {{entity_id: $target_id}})-[r:DIRECTED]->(source:{workspace_label} {{entity_id: $source_id}})
+                    DELETE r
+                """
+                self.connection.execute(
+                    query2, {"source_id": source, "target_id": target}
+                )
+                
+                logger.debug(f"Deleted bidirectional edge between '{source}' and '{target}'")
             except Exception as e:
                 logger.error(f"Error during edge deletion: {str(e)}")
                 raise
