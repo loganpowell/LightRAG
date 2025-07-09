@@ -494,7 +494,7 @@ class Neo4JStorage(BaseGraphStorage):
 
     async def get_edge(
         self, source_node_id: str, target_node_id: str
-    ) -> dict[str, str] | None:
+    ) -> dict[str, str | float | None] | None:
         """Get edge properties between two nodes.
 
         Args:
@@ -896,10 +896,7 @@ class Neo4JStorage(BaseGraphStorage):
             raise
 
     async def get_knowledge_graph(
-        self,
-        node_label: str,
-        max_depth: int = 3,
-        max_nodes: int = None,
+        self, node_label: str, max_depth: int = 3, max_nodes: int = None  # type: ignore
     ) -> KnowledgeGraph:
         """
         Retrieve a connected subgraph of nodes where the label includes the specified `node_label`.

@@ -16,6 +16,7 @@ STORAGE_IMPLEMENTATIONS = {
             "PGGraphStorage",
             "MongoGraphStorage",
             "MemgraphStorage",
+            "KuzuDBStorage",
             # "AGEStorage",
             # "TiDBGraphStorage",
             # "GremlinStorage",
