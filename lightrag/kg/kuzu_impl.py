@@ -1,14 +1,11 @@
 import os
-import re
 from dataclasses import dataclass
-from typing import final, TYPE_CHECKING, cast
+from typing import final, cast
 from collections import deque
-import logging
 
 from ..utils import logger
 from ..base import BaseGraphStorage
 from ..types import KnowledgeGraph, KnowledgeGraphNode, KnowledgeGraphEdge
-from ..constants import GRAPH_FIELD_SEP
 
 import kuzu
 
@@ -143,8 +140,8 @@ class KuzuDBStorage(BaseGraphStorage):
         workspace_label = self._get_workspace_label()
         try:
             query = f"""
-                MATCH (a:{workspace_label})-[r:DIRECTED]-(b:{workspace_label}) 
-                WHERE a.entity_id = $source_id AND b.entity_id = $target_id 
+                MATCH (a:{workspace_label})-[r:DIRECTED]-(b:{workspace_label})
+                WHERE a.entity_id = $source_id AND b.entity_id = $target_id
                 RETURN r
             """
             result = self.get_first(
@@ -185,7 +182,7 @@ class KuzuDBStorage(BaseGraphStorage):
 
     async def get_nodes_batch(self, node_ids: list[str]) -> dict[str, dict]:
         """Retrieve multiple nodes in one query"""
-        workspace_label = self._get_workspace_label()
+        # workspace_label = self._get_workspace_label()
         nodes = {}
 
         for node_id in node_ids:
@@ -394,7 +391,7 @@ class KuzuDBStorage(BaseGraphStorage):
                             clean_node_dict[clean_key] = value
 
                         clean_node_dict["id"] = clean_node_dict.get("entity_id")
-                        
+
                         # Only add the node if we haven't seen it before
                         entity_id = clean_node_dict.get("entity_id")
                         if entity_id and entity_id not in seen_nodes:
@@ -445,7 +442,7 @@ class KuzuDBStorage(BaseGraphStorage):
                         source, target = row[0], row[1]
                         clean_edge_dict["source"] = source
                         clean_edge_dict["target"] = target
-                        
+
                         # Create normalized edge pair to avoid bidirectional duplicates
                         edge_pair = tuple(sorted([source, target]))
                         if edge_pair not in seen_edges:
@@ -523,7 +520,7 @@ class KuzuDBStorage(BaseGraphStorage):
                 MERGE (source)-[r:DIRECTED]->(target)
                 {set_clause}
             """
-            
+
             # Edge 2: target -> source
             query2 = f"""
                 MATCH (source:{workspace_label} {{entity_id: $source_id}})
@@ -578,7 +575,9 @@ class KuzuDBStorage(BaseGraphStorage):
                         # Clean up column names by removing prefixes
                         clean_node_data = {}
                         for key, value in node_data.items():
-                            clean_key = key.replace("n.", "") if key.startswith("n.") else key
+                            clean_key = (
+                                key.replace("n.", "") if key.startswith("n.") else key
+                            )
                             clean_node_data[clean_key] = value
 
                         entity_id = clean_node_data.get("entity_id")
@@ -618,7 +617,7 @@ class KuzuDBStorage(BaseGraphStorage):
                             source, target = row[0], row[1]
                             edge_pair = tuple(sorted([source, target]))
                             edge_id = f"{edge_pair[0]}-{edge_pair[1]}"
-                            
+
                             if edge_id not in seen_edges:
                                 result.edges.append(
                                     KnowledgeGraphEdge(
@@ -645,7 +644,7 @@ class KuzuDBStorage(BaseGraphStorage):
         self, node_label: str, max_depth: int, max_nodes: int
     ) -> KnowledgeGraph:
         """BFS implementation for subgraph traversal"""
-        workspace_label = self._get_workspace_label()
+        # workspace_label = self._get_workspace_label()
         result = KnowledgeGraph()
         visited_nodes = set()
         visited_edges = set()
@@ -766,7 +765,7 @@ class KuzuDBStorage(BaseGraphStorage):
                 self.connection.execute(
                     query1, {"source_id": source, "target_id": target}
                 )
-                
+
                 # Delete target -> source
                 query2 = f"""
                     MATCH (target:{workspace_label} {{entity_id: $target_id}})-[r:DIRECTED]->(source:{workspace_label} {{entity_id: $source_id}})
@@ -775,8 +774,10 @@ class KuzuDBStorage(BaseGraphStorage):
                 self.connection.execute(
                     query2, {"source_id": source, "target_id": target}
                 )
-                
-                logger.debug(f"Deleted bidirectional edge between '{source}' and '{target}'")
+
+                logger.debug(
+                    f"Deleted bidirectional edge between '{source}' and '{target}'"
+                )
             except Exception as e:
                 logger.error(f"Error during edge deletion: {str(e)}")
                 raise

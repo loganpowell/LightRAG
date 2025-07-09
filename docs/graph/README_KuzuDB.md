@@ -25,7 +25,7 @@ KuzuDB has been successfully integrated into the LightRAG project as a graph sto
 KuzuDB integration uses the following environment variables:
 
 - `KUZU_DB_PATH` - Path to the KuzuDB database file
-- `KUZU_WORKSPACE` - Workspace name for the KuzuDB instance  
+- `KUZU_WORKSPACE` - Workspace name for the KuzuDB instance
 - `LIGHTRAG_GRAPH_STORAGE=KuzuDBStorage` - Enable KuzuDB in universal tests
 
 ## Running Tests

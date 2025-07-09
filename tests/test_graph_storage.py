@@ -83,7 +83,6 @@ TRANSLATIONS = {
         "kuzu_temp_cleaned": "KuzuDB temporary directory cleaned",
         # Additional test messages / 额外的测试消息
         "test_completed": "Test completed",
-        "advanced_test_complete": "Advanced test completed",
         "batch_test_complete": "Batch operations test completed",
         "undirected_test_complete": "Undirected graph property test completed",
         "all_tests_completed": "All tests completed successfully",
@@ -283,7 +282,6 @@ TRANSLATIONS = {
         "kuzu_temp_cleaned": "KuzuDB临时目录已清理",
         # Additional test messages - Chinese / 额外的测试消息 - 中文
         "test_completed": "测试完成",
-        "advanced_test_complete": "高级测试完成",
         "batch_test_complete": "批量操作测试完成",
         "undirected_test_complete": "无向图特性测试完成",
         "all_tests_completed": "所有测试成功完成",
@@ -736,9 +734,7 @@ async def test_graph_basic(storage):
             print(t("undirected_verification_success"))
         else:
             print(f"{t('failed_read_reverse_edge')}: {node2_id} -> {node1_id}")
-            assert (
-                False
-            ), f"{t('unable_read_reverse_edge')}: {node2_id} -> {node1_id}, {t('undirected_verification_failed')}"
+            assert False, f"{t('unable_read_reverse_edge')}: {node2_id} -> {node1_id}, {t('undirected_verification_failed')}"
 
         print(t("basic_test_complete"))
         return True
@@ -1823,11 +1819,12 @@ async def test_graph_undirected_property(storage):
         print(f"{t('batch_get_reverse_edges_result')}: {reverse_edges_dict.keys()}")
         for (src, tgt), props in edges_dict.items():
             assert (
-                tgt,
-                src,
-            ) in reverse_edges_dict, (
-                f"{t('reverse_edge_should_be_in_result')}: {tgt} -> {src}"
-            )
+                (
+                    tgt,
+                    src,
+                )
+                in reverse_edges_dict
+            ), f"{t('reverse_edge_should_be_in_result')}: {tgt} -> {src}"
             assert props == reverse_edges_dict[(tgt, src)], t(
                 "forward_reverse_inconsistent"
             )
@@ -2013,11 +2010,11 @@ if __name__ == "__main__":
     # Print language info / 打印语言信息
     if LANGUAGE == "english":
         print(
-            f"Running tests in English. Use --language chinese or set TEST_LANGUAGE=chinese for Chinese."
+            "Running tests in English. Use --language chinese or set TEST_LANGUAGE=chinese for Chinese."
         )
     else:
         print(
-            f"使用中文运行测试。使用 --language english 或设置 TEST_LANGUAGE=english 来使用英文。"
+            "使用中文运行测试。使用 --language english 或设置 TEST_LANGUAGE=english 来使用英文。"
         )
 
     asyncio.run(main())

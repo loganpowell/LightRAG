@@ -223,11 +223,13 @@ def is_server_available() -> bool:
     try:
         url = get_base_url("chat")
         response = requests.post(
-            url,
-            json={"model": "test", "messages": [], "stream": False},
-            timeout=5
+            url, json={"model": "test", "messages": [], "stream": False}, timeout=5
         )
-        return True
+        if response.status_code == 200:
+            return True
+        else:
+            print(f"Server returned status code {response.status_code}")
+            return False
     except (requests.exceptions.ConnectionError, requests.exceptions.Timeout):
         return False
 
@@ -235,7 +237,7 @@ def is_server_available() -> bool:
 # Pytest marker for tests that require server
 requires_server = pytest.mark.skipif(
     not is_server_available(),
-    reason="Ollama server not available at configured host:port"
+    reason="Ollama server not available at configured host:port",
 )
 
 

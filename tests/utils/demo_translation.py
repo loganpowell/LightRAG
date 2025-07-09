@@ -13,7 +13,7 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 os.environ["TEST_LANGUAGE"] = "english"
 
 # Import and run just the translation demo
-from tests.test_graph_storage import t, TRANSLATIONS
+from tests.test_graph_storage import t
 
 
 def demo_translations():
